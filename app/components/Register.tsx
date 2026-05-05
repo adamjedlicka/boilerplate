@@ -21,11 +21,17 @@ export const Register = ({ onSwitchToLogin }: Props) => {
 
 	const form = useForm({
 		mode: 'uncontrolled',
-		initialValues: { email: '', password: '' },
+		initialValues: { email: '', password: '', confirmPassword: '' },
 		validate: {
-			email: (v) => (/^\S+@\S+$/.test(v) ? null : 'Invalid email'),
-			password: (v) =>
-				v.length >= 8 ? null : 'Password must be at least 8 characters',
+			email: (v) => {
+				if (!/^\S+@\S+$/.test(v)) return 'Invalid email'
+			},
+			password: (v) => {
+				if (v.length < 8) return 'Password must be at least 8 characters'
+			},
+			confirmPassword: (v, values) => {
+				if (v !== values.password) return 'Passwords do not match'
+			},
 		},
 	})
 
@@ -45,19 +51,29 @@ export const Register = ({ onSwitchToLogin }: Props) => {
 		<Paper w={360} p="xl" withBorder shadow="md" radius="md">
 			<Stack>
 				<Title order={2}>Create account</Title>
-				<form onSubmit={handleSubmit}>
+				<form noValidate onSubmit={handleSubmit}>
 					<Stack>
 						<TextInput
 							key={form.key('email')}
 							label="Email"
 							placeholder="you@example.com"
+							type="email"
+							autoComplete="email"
 							{...form.getInputProps('email')}
 						/>
 						<PasswordInput
 							key={form.key('password')}
 							label="Password"
 							placeholder="At least 8 characters"
+							autoComplete="new-password"
 							{...form.getInputProps('password')}
+						/>
+						<PasswordInput
+							key={form.key('confirmPassword')}
+							label="Confirm password"
+							placeholder="Repeat your password"
+							autoComplete="new-password"
+							{...form.getInputProps('confirmPassword')}
 						/>
 						<Button type="submit" fullWidth loading={form.submitting}>
 							Create account

@@ -23,8 +23,12 @@ export const Login = ({ onSwitchToRegister }: Props) => {
 		mode: 'uncontrolled',
 		initialValues: { email: '', password: '' },
 		validate: {
-			email: (v) => (/^\S+@\S+$/.test(v) ? null : 'Invalid email'),
-			password: (v) => (v.length > 0 ? null : 'Password is required'),
+			email: (v) => {
+				if (!/^\S+@\S+$/.test(v)) return 'Invalid email'
+			},
+			password: (v) => {
+				if (v.length === 0) return 'Password is required'
+			},
 		},
 	})
 
@@ -44,18 +48,21 @@ export const Login = ({ onSwitchToRegister }: Props) => {
 		<Paper w={360} p="xl" withBorder shadow="md" radius="md">
 			<Stack>
 				<Title order={2}>Sign in</Title>
-				<form onSubmit={handleSubmit}>
+				<form noValidate onSubmit={handleSubmit}>
 					<Stack>
 						<TextInput
 							key={form.key('email')}
 							label="Email"
 							placeholder="you@example.com"
+							type="email"
+							autoComplete="email"
 							{...form.getInputProps('email')}
 						/>
 						<PasswordInput
 							key={form.key('password')}
 							label="Password"
 							placeholder="Your password"
+							autoComplete="current-password"
 							{...form.getInputProps('password')}
 						/>
 						<Button type="submit" fullWidth loading={form.submitting}>
