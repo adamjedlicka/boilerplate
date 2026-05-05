@@ -13,6 +13,9 @@
 	},
 	"dependencies": {
 		"@convex-dev/auth": "^0.0.92",
+		"@mantine/core": "^9.1.1",
+		"@mantine/form": "^9.1.1",
+		"@mantine/hooks": "^9.1.1",
 		"@tanstack/react-router": "^1.169.1",
 		"@tanstack/react-router-devtools": "^1.166.13",
 		"convex": "^1.37.0",
