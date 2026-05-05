@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { createRouter, RouterProvider } from '@tanstack/react-router'
+import { routeTree } from './routeTree.gen'
+
+const router = createRouter({ routeTree })
+
+declare module '@tanstack/react-router' {
+	interface Register {
+		router: typeof router
+	}
+}
 
 export const App = () => {
-	const [count, setCount] = useState(0)
-
-	return (
-		<button type="button" onClick={() => setCount(count + 1)}>
-			Count: {count}
-		</button>
-	)
+	return <RouterProvider router={router} />
 }
