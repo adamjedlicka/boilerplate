@@ -1,5 +1,6 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
+import { AuthGuard } from '../components/AuthGuard'
 
 export const Route = createRootRoute({
 	component: RootComponent,
@@ -8,7 +9,9 @@ export const Route = createRootRoute({
 function RootComponent() {
 	return (
 		<>
-			<Outlet />
+			<AuthGuard>
+				<Outlet />
+			</AuthGuard>
 			<TanStackRouterDevtools />
 		</>
 	)
