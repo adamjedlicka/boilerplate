@@ -10,6 +10,7 @@ import {
 	Title,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
+import { notifications } from '@mantine/notifications'
 
 type Props = {
 	onSwitchToLogin: () => void
@@ -29,7 +30,15 @@ export const Register = ({ onSwitchToLogin }: Props) => {
 	})
 
 	const handleSubmit = form.onSubmit(async ({ email, password }) => {
-		await signIn('password', { email, password, flow: 'signUp' })
+		try {
+			await signIn('password', { email, password, flow: 'signUp' })
+		} catch {
+			notifications.show({
+				color: 'red',
+				title: 'Registration failed',
+				message: 'This email may already be in use.',
+			})
+		}
 	})
 
 	return (

@@ -1,5 +1,6 @@
 import { ConvexAuthProvider } from '@convex-dev/auth/react'
 import { MantineProvider } from '@mantine/core'
+import { Notifications } from '@mantine/notifications'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { ConvexReactClient } from 'convex/react'
 import { routeTree } from './routeTree.gen'
@@ -17,6 +18,7 @@ declare module '@tanstack/react-router' {
 export function App() {
 	return (
 		<MantineProvider>
+			<Notifications />
 			<ConvexAuthProvider client={convex}>
 				<RouterProvider router={router} />
 			</ConvexAuthProvider>
