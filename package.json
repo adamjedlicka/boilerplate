@@ -4,7 +4,9 @@
 	"version": "0.0.0",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "bun run --parallel dev:app dev:convex",
+		"dev:app": "vite dev",
+		"dev:convex": "convex dev",
 		"build": "vite build",
 		"typecheck": "tsc",
 		"lint": "biome check",
