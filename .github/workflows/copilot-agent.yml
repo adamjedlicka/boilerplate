@@ -1,12 +1,11 @@
 name: Copilot Agent Trigger
 
 on:
-  issue_comment:
-    types: [created]
+  issues:
+    types: [opened]
 
 jobs:
   run-agent:
-    if: startsWith(github.event.comment.body, '/copilot')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,4 +23,4 @@ jobs:
           COPILOT_API_KEY: ${{ secrets.COPILOT_API_KEY }}
         run: |
           chmod +x ./.github/scripts/copilot-agent-handler.sh
-          ./.github/scripts/copilot-agent-handler.sh "${{ github.event.comment.body }}" "${{ github.event.issue.number }}" "${{ github.event.comment.user.login }}"
+          ./.github/scripts/copilot-agent-handler.sh "${{ github.event.issue.title }}\n\n${{ github.event.issue.body }}" "${{ github.event.issue.number }}" "${{ github.event.issue.user.login }}"

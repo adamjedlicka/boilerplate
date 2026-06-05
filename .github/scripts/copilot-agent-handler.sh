@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-comment="${1:-}"
+input="${1:-}"
 issue_number="${2:-}"
-comment_user="${3:-}"
-# strip leading command
-task="$(echo "$comment" | sed -E 's|^/copilot\s*||')"
+issue_user="${3:-}"
+# strip leading command if present
+task="$(echo "$input" | sed -E 's|^/copilot\s*||')"
 
 if [ -z "$task" ]; then
-  echo "No task found in comment. Use: /copilot <description>"
+  echo "No task found in issue title or body. Add a description to the issue."
+  if command -v gh >/dev/null 2>&1; then
+    gh issue comment "$issue_number" --body "Copilot agent was triggered but no task description was found in the issue title or body. Please add a description."
+  fi
   exit 0
 fi
 
@@ -26,6 +29,8 @@ git config user.name "github-actions[bot]"
 git config user.email "github-actions[bot]@users.noreply.github.com"
 
 echo "Creating branch $branch"
+# create branch from default branch
+git fetch origin
 git checkout -b "$branch"
 
 # Try to run copilot CLI delegate (best-effort)
@@ -52,7 +57,14 @@ if [ -n "$(git status --porcelain)" ]; then
   git commit -m "Implement: ${task}" || true
   git push --set-upstream origin "$branch"
   if command -v gh >/dev/null 2>&1; then
-    gh pr create --title "Copilot: ${task}" --body "Automated implementation of: ${task}" --head "$branch"
+    # create PR and capture URL
+    gh pr create --title "Copilot: ${task}" --body "Automated implementation of: ${task}" --head "$branch" || true
+    pr_url=$(gh pr view --json url --jq .url --head "$branch" 2>/dev/null || true)
+    if [ -n "$pr_url" ]; then
+      gh issue comment "$issue_number" --body "Opened PR: $pr_url\n\nThis PR was created automatically to implement the issue description. Please review and merge when ready."
+    else
+      gh issue comment "$issue_number" --body "A PR was created for the implementation, but the runner couldn't determine the PR URL."
+    fi
   fi
 else
   echo "No changes created by Copilot."
