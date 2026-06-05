@@ -1,0 +1,168 @@
+name: "Agentic: Implement issue and open PR"
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  implement:
+    name: Implement feature and open PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up tools
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y jq
+
+      - name: Read issue
+        id: issue
+        run: |
+          ISSUE_NUMBER=$(jq -r .issue.number "$GITHUB_EVENT_PATH")
+          ISSUE_TITLE=$(jq -r .issue.title "$GITHUB_EVENT_PATH")
+          ISSUE_BODY=$(jq -r .issue.body "$GITHUB_EVENT_PATH")
+          echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+          echo "issue_title<<EOF" >> $GITHUB_OUTPUT
+          echo "$ISSUE_TITLE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "issue_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Generate patch with OpenAI
+        id: gen
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL || 'gpt-4o-mini' }}
+        run: |
+          set -euo pipefail
+          ISSUE_TITLE="${{ steps.issue.outputs.issue_title }}"
+          ISSUE_BODY="${{ steps.issue.outputs.issue_body }}"
+
+          # Build prompt — ask for a single unified git-style diff inside ```diff block.
+          read -r -d '' PROMPT <<'EOF' || true
+You are an expert developer with full access to the repository files. Implement the feature described in the issue below by producing a unified git diff (a patch) that can be applied with `git apply --index`.
+
+Requirements:
+- Output ONLY the patch inside a single fenced code block labeled ```diff
+- Do NOT include any other text outside the fenced code block
+- Make minimal, focused changes needed to implement the feature described
+- If changes require new files, create them in the patch
+
+Issue Title:
+<<ISSUE_TITLE>>
+
+Issue Body:
+<<ISSUE_BODY>>
+EOF
+
+          PROMPT=${PROMPT//<<ISSUE_TITLE>>/$ISSUE_TITLE}
+          PROMPT=${PROMPT//<<ISSUE_BODY>>/$ISSUE_BODY}
+
+          echo "Requesting patch from OpenAI..."
+
+          # Call OpenAI Chat Completions (compatibility with OpenAI v1 chat endpoint)
+          RESP=$(curl -s -X POST "https://api.openai.com/v1/chat/completions" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @- <<-JSON
+{
+  "model": "${OPENAI_MODEL}",
+  "messages": [
+    {"role":"system","content":"You are a helpful, precise code author. Reply only with a single fenced code block containing a unified git diff labeled \"diff\"."},
+    {"role":"user","content": $(jq -Rs <<< "$PROMPT")}
+  ],
+  "temperature": 0.2,
+  "max_tokens": 2500
+}
+JSON
+)
+
+          # Extract the first ```diff block
+          PATCH=$(echo "$RESP" | sed -n 's/\\r//g' | sed -n "/```diff/,/```/p" || true)
+          if [[ -z "$PATCH" ]]; then
+            echo "No patch returned by model. Dumping response for debugging." >&2
+            echo "$RESP" >&2
+            exit 1
+          fi
+
+          # Remove fences
+          echo "$PATCH" | sed '1d;$d' > /tmp/patch.diff
+          echo "Patch saved to /tmp/patch.diff"
+          echo "patch_path=/tmp/patch.diff" >> $GITHUB_OUTPUT
+
+      - name: Apply patch, commit and push
+        id: push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ISSUE_NUMBER=${{ steps.issue.outputs.issue_number }}
+          ISSUE_TITLE="${{ steps.issue.outputs.issue_title }}"
+          BRANCH="agent/issue-${ISSUE_NUMBER}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # create branch
+          git checkout -b "$BRANCH"
+
+          # apply patch
+          if ! git apply --index /tmp/patch.diff; then
+            echo "git apply failed — adding a comment to the issue and exiting."
+            curl -s -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments \
+              -d "{\"body\": \"Automated implementation failed: patch could not be applied. Please review the issue or provide more guidance.\"}"
+            exit 1
+          fi
+
+          # commit
+          git commit -m "Implement: ${ISSUE_TITLE} (issue #${ISSUE_NUMBER})"
+
+          # push
+          git push --set-upstream origin "$BRANCH"
+
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ISSUE_NUMBER=${{ steps.issue.outputs.issue_number }}
+          ISSUE_TITLE="${{ steps.issue.outputs.issue_title }}"
+          BRANCH=${{ steps.push.outputs.branch }}
+
+          # Get default branch
+          DEFAULT_BRANCH=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}" | jq -r .default_branch)
+
+          PR_TITLE="Automated: ${ISSUE_TITLE} (issue #${ISSUE_NUMBER})"
+          PR_BODY="This pull request was created by an automated workflow that attempted to implement the feature described in issue #${ISSUE_NUMBER}. Please review the changes and request adjustments if needed."
+
+          # create PR
+          RESP=$(curl -s -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/pulls \
+            -d "{\"title\": \"${PR_TITLE}\", \"body\": \"${PR_BODY}\", \"head\": \"${BRANCH}\", \"base\": \"${DEFAULT_BRANCH}\"}")
+
+          PR_URL=$(echo "$RESP" | jq -r .html_url)
+          if [[ "$PR_URL" == "null" || -z "$PR_URL" ]]; then
+            echo "Failed to create PR. Response:\n$RESP" >&2
+            exit 1
+          fi
+
+          # comment on the issue with PR link
+          curl -s -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments \
+            -d "{\"body\": \"I created a pull request to implement this issue: ${PR_URL}\"}"
+
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+
+      - name: Notify success
+        run: |
+          echo "PR created: ${{ steps.Create_Pull_Request.outputs.pr_url || steps.Create_Pull_Request.outputs.pr_url }}"
