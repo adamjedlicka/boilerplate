@@ -1,0 +1,27 @@
+name: Copilot Agent Trigger
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  run-agent:
+    if: startsWith(github.event.comment.body, '/copilot')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install gh CLI
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y gh
+      - name: Run Copilot Agent handler
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COPILOT_API_KEY: ${{ secrets.COPILOT_API_KEY }}
+        run: |
+          chmod +x ./.github/scripts/copilot-agent-handler.sh
+          ./.github/scripts/copilot-agent-handler.sh "${{ github.event.comment.body }}" "${{ github.event.issue.number }}" "${{ github.event.comment.user.login }}"
